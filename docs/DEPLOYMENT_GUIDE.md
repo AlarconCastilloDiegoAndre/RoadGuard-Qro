@@ -19,23 +19,31 @@ with **no credit card required**.
 
 ---
 
-## 2. Hugging Face Spaces (FastAPI Backend Container)
+## 2. Render (FastAPI Backend — 100% Free, No Credit Card Required)
 
-1. Go to [https://huggingface.co/new-space](https://huggingface.co/new-space).
-2. Settings:
-   - **Space name**: `roadguard-api`
-   - **License**: `agpl-3.0`
-   - **SDK**: **Docker** -> **Blank**
-   - **Space Hardware**: **CPU basic • 2 vCPU • 16 GB • Free**
-3. Create Space.
-4. Go to **Settings** -> **Variables and secrets**:
-   - Add Secret `SUPABASE_URL`: Your Supabase URL.
-   - Add Secret `SUPABASE_SERVICE_ROLE_KEY`: Your service role key.
-   - Add Variable `ENVIRONMENT`: `production`.
-5. *(Automated Deploy via GitHub)*:
-   - In GitHub: Go to repo **Settings** -> **Secrets and variables** -> **Actions**.
-   - Add secret `HF_TOKEN`: Your Hugging Face Write token.
-   - Any commit to `backend/` will push and rebuild the container automatically!
+Hugging Face recently added restrictions on compute Spaces for new accounts. **Render** is our designated $0 host: it requires **zero credit card**, supports native Python / Docker, and gives a permanent free web service with automatic HTTPS.
+
+### Quick Deploy via Render:
+1. Go to [https://render.com](https://render.com) and click **GET STARTED FOR FREE**.
+2. Select **Sign in with GitHub** (uses your existing GitHub login, zero credit card asked).
+3. In your Render Dashboard, click **New +** -> **Web Service**.
+4. Choose **Build and deploy from a Git repository** -> Connect your `RoadGuard-Qro` repository.
+5. Fill in the deployment settings:
+   - **Name**: `roadguard-api`
+   - **Region**: `Oregon (US West)` or `Ohio (US East)`
+   - **Branch**: `main`
+   - **Root Directory**: leave empty
+   - **Runtime**: **Python 3**
+   - **Build Command**: `pip install --upgrade pip && pip install -r backend/requirements.txt`
+   - **Start Command**: `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: **Free** ($0/month)
+6. Scroll down to **Environment Variables** and add:
+   - `SUPABASE_URL`: Your Supabase Project URL (`https://xyz.supabase.co`)
+   - `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role secret key
+   - `ENVIRONMENT`: `production`
+7. Click **Create Web Service**.
+8. Render will build and deploy your API in ~2 minutes and provide a public URL (e.g. `https://roadguard-api.onrender.com`).
+   Copy this URL — it will be used as `NEXT_PUBLIC_API_URL` for the frontend!
 
 ---
 

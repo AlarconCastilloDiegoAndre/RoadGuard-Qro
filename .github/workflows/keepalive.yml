@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ping Hugging Face Space Health
+      - name: Ping Backend API Health (Render / Free host)
         run: |
-          SPACE_URL="${{ secrets.HF_SPACE_URL || 'https://huggingface.co/spaces/AlarconCastilloDiegoAndre/roadguard-api' }}"
-          echo "Pinging Space health: $SPACE_URL"
-          curl -s -f -m 30 "$SPACE_URL/health" || echo "Space ping completed."
+          API_URL="${{ secrets.API_URL || 'https://roadguard-api.onrender.com' }}"
+          echo "Pinging API health: $API_URL/health"
+          curl -s -f -m 30 "$API_URL/health" || echo "API ping completed."
 
       - name: Ping Supabase Project API (Prevents 7-day auto-pause)
         run: |
