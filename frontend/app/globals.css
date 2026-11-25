@@ -9,6 +9,79 @@
   }
 }
 
+/* MapLibre GL Core Styles (ensures map and markers render even if CDN is blocked) */
+.maplibregl-map {
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.maplibregl-canvas-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.maplibregl-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.maplibregl-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+  user-select: none;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.maplibregl-ctrl-top-right {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+}
+
+.maplibregl-ctrl-group {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  width: 32px !important;
+  height: 32px !important;
+  background-color: transparent !important;
+  border: none !important;
+  color: #f8fafc !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: #1e293b !important;
+}
+
+/* Custom animated marker styling */
+.damage-marker-pin {
+  display: block;
+  border-radius: 50%;
+  position: relative;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.damage-marker-pin:hover {
+  transform: scale(1.4);
+  z-index: 50;
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

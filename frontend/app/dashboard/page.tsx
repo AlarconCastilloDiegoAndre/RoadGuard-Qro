@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
-// Damage entity structure
 interface RoadDamage {
   id: string;
   damage_class: 'D00' | 'D10' | 'D20' | 'D40';
@@ -89,18 +88,22 @@ const SEVERITY_COLORS = {
   low: '#3b82f6',
 };
 
+// High-speed CDN CartoDB Dark Matter GL style (free, edge-cached in Mexico, never blocked)
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
 export default function MunicipalDashboard() {
   const [damages, setDamages] = useState<RoadDamage[]>(INITIAL_DEMO_DAMAGES);
   const [selectedDamage, setSelectedDamage] = useState<RoadDamage | null>(INITIAL_DEMO_DAMAGES[0]);
   const [filterClass, setFilterClass] = useState<string>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [mapReady, setMapReady] = useState<boolean>(false);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  // Fetch damages from Supabase or fallback
+  // Fetch damages from Supabase
   const fetchDamages = async () => {
     try {
       const { data, error } = await supabase
@@ -109,16 +112,15 @@ export default function MunicipalDashboard() {
         .order('severity_score', { ascending: false });
 
       if (data && data.length > 0 && !error) {
-        // Map GeoJSON points if available
-        const parsed = data.map((d: any) => ({
+        const parsed: RoadDamage[] = data.map((d: any) => ({
           ...d,
-          lat: d.lat || 20.5888,
-          lon: d.lon || -100.3899,
+          lat: typeof d.lat === 'number' ? d.lat : 20.5861,
+          lon: typeof d.lon === 'number' ? d.lon : -100.4082,
         }));
         setDamages(parsed);
       }
     } catch {
-      // Retain demo damages
+      // Retain initial demo damages
     }
   };
 
@@ -126,23 +128,39 @@ export default function MunicipalDashboard() {
     fetchDamages();
   }, []);
 
-  // Initialize MapLibre GL with OpenFreeMap (Zero Cost, No API Key)
+  // Initialize MapLibre GL
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
+    let isMounted = true;
+
     import('maplibre-gl').then((maplibregl) => {
+      if (!isMounted || !mapContainerRef.current) return;
+
       const map = new maplibregl.Map({
-        container: mapContainerRef.current!,
-        style: 'https://tiles.openfreemap.org/styles/dark', // Free Vector Tiles
-        center: [-100.392, 20.595], // Downtown Santiago de Querétaro
+        container: mapContainerRef.current,
+        style: MAP_STYLE,
+        center: [-100.392, 20.595], // Santiago de Querétaro Downtown
         zoom: 12.5,
       });
 
       map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      map.on('load', () => {
+        if (!isMounted) return;
+        setMapReady(true);
+        map.resize();
+      });
+
+      // Handle window resize dynamically
+      const handleResize = () => map.resize();
+      window.addEventListener('resize', handleResize);
+
       mapInstanceRef.current = map;
     });
 
     return () => {
+      isMounted = false;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -150,30 +168,39 @@ export default function MunicipalDashboard() {
     };
   }, []);
 
-  // Update map markers when filtered damages change
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+  // Filter pipeline
+  const filteredDamages = damages.filter((d) => {
+    if (filterClass !== 'all' && d.damage_class !== filterClass) return false;
+    if (filterSeverity !== 'all' && d.severity_level !== filterSeverity) return false;
+    if (filterStatus !== 'all' && d.status !== filterStatus) return false;
+    return true;
+  });
 
-    // Clear old markers
+  // Render Markers whenever Map is ready OR Filtered damages update
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    // Clear previous markers
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
     import('maplibre-gl').then((maplibregl) => {
       filteredDamages.forEach((d) => {
         const el = document.createElement('div');
-        el.className = 'custom-marker';
-        el.style.width = '18px';
-        el.style.height = '18px';
+        el.className = 'damage-marker-pin';
+        el.style.width = '20px';
+        el.style.height = '20px';
         el.style.borderRadius = '50%';
         el.style.backgroundColor = SEVERITY_COLORS[d.severity_level];
-        el.style.border = '2px solid #ffffff';
-        el.style.boxShadow = `0 0 10px ${SEVERITY_COLORS[d.severity_level]}`;
+        el.style.border = '2.5px solid #ffffff';
+        el.style.boxShadow = `0 0 12px ${SEVERITY_COLORS[d.severity_level]}, 0 2px 5px rgba(0,0,0,0.6)`;
         el.style.cursor = 'pointer';
 
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
           setSelectedDamage(d);
-          map.flyTo({ center: [d.lon, d.lat], zoom: 15 });
+          map.flyTo({ center: [d.lon, d.lat], zoom: 15.5 });
         });
 
         const marker = new maplibregl.Marker({ element: el })
@@ -183,15 +210,7 @@ export default function MunicipalDashboard() {
         markersRef.current.push(marker);
       });
     });
-  }, [damages, filterClass, filterSeverity, filterStatus]);
-
-  // Filter pipeline
-  const filteredDamages = damages.filter((d) => {
-    if (filterClass !== 'all' && d.damage_class !== filterClass) return false;
-    if (filterSeverity !== 'all' && d.severity_level !== filterSeverity) return false;
-    if (filterStatus !== 'all' && d.status !== filterStatus) return false;
-    return true;
-  });
+  }, [mapReady, filteredDamages]);
 
   // Export CSV for Public Works asphalt budget
   const exportCSV = () => {
@@ -229,7 +248,7 @@ export default function MunicipalDashboard() {
     try {
       await supabase.from('road_damages').update({ status: newStatus }).eq('id', damageId);
     } catch {
-      // Ignored in offline demo
+      // Offline fallback
     }
   };
 
@@ -265,7 +284,7 @@ export default function MunicipalDashboard() {
       {/* Main Split Layout: Filter & Table on Left, Map on Right */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Control & Prioritization Panel */}
-        <div className="w-full md:w-96 bg-slate-900/90 border-r border-slate-800 flex flex-col overflow-hidden shrink-0">
+        <div className="w-full md:w-96 bg-slate-900/95 border-r border-slate-800 flex flex-col overflow-hidden shrink-0 z-10">
           {/* Filters Bar */}
           <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
@@ -332,11 +351,11 @@ export default function MunicipalDashboard() {
                 onClick={() => {
                   setSelectedDamage(item);
                   if (mapInstanceRef.current) {
-                    mapInstanceRef.current.flyTo({ center: [item.lon, item.lat], zoom: 15 });
+                    mapInstanceRef.current.flyTo({ center: [item.lon, item.lat], zoom: 15.5 });
                   }
                 }}
                 className={`p-3 cursor-pointer transition flex items-center justify-between ${
-                  selectedDamage?.id === item.id ? 'bg-sky-950/40 border-l-4 border-sky-400' : 'hover:bg-slate-800/40'
+                  selectedDamage?.id === item.id ? 'bg-sky-950/50 border-l-4 border-sky-400' : 'hover:bg-slate-800/40'
                 }`}
               >
                 <div>
@@ -415,12 +434,22 @@ export default function MunicipalDashboard() {
           )}
         </div>
 
-        {/* Right Map Canvas (OpenFreeMap Vector Tiles) */}
-        <div className="flex-1 relative bg-slate-950">
-          <div ref={mapContainerRef} className="w-full h-full" />
+        {/* Right Map Canvas */}
+        <div className="flex-1 relative bg-slate-950 min-h-[450px] w-full h-full">
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+
+          {/* Map Loading indicator */}
+          {!mapReady && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-20">
+              <div className="flex items-center gap-2 text-sky-400 font-semibold text-sm">
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                Cargando mapa de Querétaro...
+              </div>
+            </div>
+          )}
 
           {/* Map Legend */}
-          <div className="absolute bottom-4 right-4 bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs shadow-xl backdrop-blur">
+          <div className="absolute bottom-4 right-4 bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs shadow-xl backdrop-blur z-20">
             <span className="font-bold text-white block mb-2">Severidad del Daño</span>
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
