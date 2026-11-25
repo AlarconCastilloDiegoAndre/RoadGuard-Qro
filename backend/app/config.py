@@ -32,11 +32,12 @@ class Settings(BaseSettings):
     # Allowed CORS Origins (Vercel & Cloudflare Pages)
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "https://*.vercel.app",
-        "https://*.pages.dev",
+        "https://road-guard-qro.vercel.app",
         "https://roadguard-qro.vercel.app",
+        "https://road-guard-qro.pages.dev",
         "https://roadguard.pages.dev",
     ]
+    CORS_ORIGIN_REGEX: str = r"^https:\/\/.*(\.vercel\.app|\.pages\.dev)$"
 
     model_config = SettingsConfigDict(
         env_file=".env",
