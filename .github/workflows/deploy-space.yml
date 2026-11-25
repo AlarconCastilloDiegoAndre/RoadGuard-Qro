@@ -1,0 +1,36 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'ml/scripts/severity.py'
+
+jobs:
+  sync-to-space:
+    name: Sync Docker Backend to HF Space
+    runs-on: ubuntu-latest
+    if: github.repository == 'AlarconCastilloDiegoAndre/RoadGuard-Qro'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face Space Git Remote
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME || 'AlarconCastilloDiegoAndre' }}
+          SPACE_NAME: ${{ secrets.SPACE_NAME || 'roadguard-api' }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN secret not configured. Skipping automated Space sync."
+            exit 0
+          fi
+          git config --global user.email "ci@roadguard.local"
+          git config --global user.name "RoadGuard CI"
+          git remote add space https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$SPACE_NAME
+          git push --force space main:main

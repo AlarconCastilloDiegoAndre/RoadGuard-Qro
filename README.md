@@ -66,14 +66,18 @@ roadguard-qro/
 
 ## Project status
 
-| Phase | Status |
-|---|---|
-| 0 – Repository scaffold & docs | ✅ |
-| 1 – Data & model training (ML notebooks) | ⏳ |
-| 2 – Supabase schema & security | ⏳ |
-| 3 – FastAPI inference backend | ⏳ |
-| 4 – Next.js capture PWA & dashboard | ⏳ |
-| 5 – CI/CD & cloud deployment | ⏳ |
+| Phase | Deliverable | Status |
+|---|---|---|
+| 0 – Repository & Documentation | AGPL-3.0, architecture log, CNN justification, roadmap | ✅ Complete |
+| 1 – Data & ML Pipelines | RDD2022 conversion, classical baseline, YOLO11n & ONNX export | ✅ Complete |
+| 2 – Supabase PostGIS Database | Multi-tenant schema, RLS, spatial deduplication procedure, seed | ✅ Complete |
+| 3 – FastAPI Backend | ONNX CPU runner, 503 semaphore backoff, PostGIS RPC, Docker | ✅ Complete |
+| 4 – Next.js PWA & Dashboard | Driver PWA (bottom 60% ROI), MapLibre GL OpenFreeMap, simulator | ✅ Complete |
+| 5 – CI/CD & Cloud Deployment | GitHub Actions test & build, Hugging Face Space sync, keep-alive | ✅ Complete |
+
+## Deployment Guide
+
+Detailed step-by-step instructions for zero-cost deployment are documented in [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).
 
 ## License
 

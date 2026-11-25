@@ -1,0 +1,30 @@
+name: Keep-Alive Free Tiers
+
+on:
+  schedule:
+    # Runs daily at 06:00 UTC (00:00 Mexico City time)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-services:
+    name: Keep Alive Supabase & Hugging Face Space
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Hugging Face Space Health
+        run: |
+          SPACE_URL="${{ secrets.HF_SPACE_URL || 'https://huggingface.co/spaces/AlarconCastilloDiegoAndre/roadguard-api' }}"
+          echo "Pinging Space health: $SPACE_URL"
+          curl -s -f -m 30 "$SPACE_URL/health" || echo "Space ping completed."
+
+      - name: Ping Supabase Project API (Prevents 7-day auto-pause)
+        run: |
+          SUPABASE_URL="${{ secrets.SUPABASE_URL }}"
+          ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+          if [ -n "$SUPABASE_URL" ] && [ -n "$ANON_KEY" ]; then
+            echo "Pinging Supabase REST endpoint..."
+            curl -s -f -m 20 "$SUPABASE_URL/rest/v1/municipalities?select=id&limit=1" \
+              -H "apikey: $ANON_KEY" \
+              -H "Authorization: Bearer $ANON_KEY" || echo "Supabase ping completed."
+          fi
