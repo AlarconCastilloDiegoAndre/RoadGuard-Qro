@@ -68,6 +68,7 @@ roadguard-qro/
 
 - 📘 **[Documentación Técnica Integral del Proyecto](docs/DOCUMENTACION_PROYECTO.md)** *(Especificación técnica completa, arquitectura, ML, PostGIS y marcos normativos)*
 - 📗 **[Manual de Usuario Operativo](docs/MANUAL_USUARIO.md)** *(Guía paso a paso para choferes en ruta, ingenieros en dashboard y resolución de problemas)*
+- 💼 **[Dossier Comercial y Catálogo de Precios B2G](docs/PROPUESTA_COMERCIAL.md)** *(Propuesta de valor para municipios, planes SaaS, venta completa, ROI y esquema de contratación)*
 - [Architecture & decision log](docs/ARCHITECTURE.md)
 - [Why a CNN? (academic justification)](docs/CNN_JUSTIFICATION.md)
 - [Zero-cost deployment guide](docs/DEPLOYMENT_GUIDE.md)
