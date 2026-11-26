@@ -142,3 +142,17 @@ export async function updateRoadDamageStatusAPI(
     return false;
   }
 }
+
+/**
+ * Permanently deletes a road damage entity (e.g. indoor test or false positive).
+ */
+export async function deleteRoadDamageAPI(damageId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/damages/${damageId}`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

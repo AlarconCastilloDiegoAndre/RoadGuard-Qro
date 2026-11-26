@@ -62,6 +62,9 @@ def _seed_initial_damages():
             raw = json.loads(LOCAL_STORE_PATH.read_text(encoding="utf-8"))
             for item in raw:
                 d = RoadDamageItem(**item)
+                # Skip indoor test artifacts captured at default fallback coordinate (20.5888, -100.3899)
+                if abs(d.lat - 20.5888) < 0.0001 and abs(d.lon - (-100.3899)) < 0.0001:
+                    continue
                 _damages_cache[d.id] = d
             if _damages_cache:
                 return
@@ -349,6 +352,9 @@ async def list_road_damages() -> List[RoadDamageItem]:
                             coords = (float(c[1]), float(c[0]))
                         if not coords:
                             continue
+                        # Filter out indoor fallback test coordinate (20.5888, -100.3899)
+                        if abs(coords[0] - 20.5888) < 0.0001 and abs(coords[1] - (-100.3899)) < 0.0001:
+                            continue
                         _damages_cache[rid] = RoadDamageItem(
                             id=rid,
                             damage_class=r.get("damage_class", "D40"),
@@ -397,3 +403,23 @@ async def update_road_damage_status(damage_id: str, new_status: DamageStatus) ->
 def get_tracked_damages_count() -> int:
     _seed_initial_damages()
     return len(_damages_cache)
+
+
+async def delete_road_damage(damage_id: str) -> bool:
+    """Deletes a specific road damage item from cache and Supabase."""
+    _seed_initial_damages()
+    existed = damage_id in _damages_cache
+    if existed:
+        del _damages_cache[damage_id]
+        _persist_local_store()
+
+    if "placeholder" not in settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
+        del_url = f"{settings.SUPABASE_URL.rstrip('/')}/rest/v1/road_damages?id=eq.{damage_id}"
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as http_client:
+                await http_client.delete(del_url, headers=_supabase_headers())
+        except Exception as e:
+            logger.debug(f"Supabase delete warning: {e}")
+
+    return True
+

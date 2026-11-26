@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from backend.app.auth import AuthUser, get_current_user
 from backend.app.config import settings
 from backend.app.db import (
+    delete_road_damage,
     get_tracked_damages_count,
     list_road_damages,
     record_detection_event,
@@ -97,6 +98,13 @@ async def patch_damage_status(damage_id: str, body: DamageStatusUpdateRequest):
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Damage ID not found")
     return updated
+
+
+@app.delete("/v1/damages/{damage_id}")
+async def remove_damage_item(damage_id: str):
+    """Deletes a road damage record (e.g. false positive or indoor test capture)."""
+    await delete_road_damage(damage_id)
+    return {"deleted": True, "id": damage_id}
 
 
 @app.post("/v1/inference/frame", response_model=FrameInferenceResponse)

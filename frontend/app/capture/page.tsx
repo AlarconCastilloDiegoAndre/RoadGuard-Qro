@@ -244,35 +244,28 @@ export default function DriverCapturePWA() {
           console.warn('Geolocation error:', err.code, err.message);
           if (err.code === 1) {
             setGpsError(
-              'Permiso de ubicación denegado en iPhone. Ve a Configuración → Privacidad → Localización → Sitios web de Safari → Mientras se usa.'
+              'iOS bloqueó el GPS para esta pestaña. 1) Toca el icono [🎥 / menú] a la izquierda de "road-guard-qro.vercel.app" abajo en Safari → Configuración del sitio web → Ubicación: Permitir. 2) En el iPhone ve a Configuración → Privacidad y seguridad → Localización → Sitios web de Safari → Mientras se usa.'
             );
-            setGpsStatusMsg('GPS sin permiso (usando coord. Querétaro de respaldo)');
+            setGpsStatusMsg('GPS bloqueado por Safari');
           } else if (highAccuracy) {
-            // Fallback to cellular/Wi-Fi triangulation if satellite lock times out
             setGpsStatusMsg('Cambiando a GPS asistido por red celular...');
             if (watchIdRef.current !== null) {
               navigator.geolocation.clearWatch(watchIdRef.current);
             }
             startWatcher(false);
           } else {
-            setGpsStatusMsg('Señal GPS débil — capturando con última ubicación conocida');
+            setGpsStatusMsg('Buscando satélites GPS...');
           }
         },
         {
           enableHighAccuracy: highAccuracy,
-          maximumAge: 2000,
-          timeout: highAccuracy ? 12000 : 20000,
+          maximumAge: 3000,
+          timeout: highAccuracy ? 15000 : 25000,
         }
       );
     };
 
-    // Immediate one-shot poll + continuous watcher
-    navigator.geolocation.getCurrentPosition(
-      (pos) => processGpsPosition(pos),
-      () => {},
-      { enableHighAccuracy: false, maximumAge: 10000, timeout: 6000 }
-    );
-
+    // Only call watchPosition (avoid concurrent getCurrentPosition + watchPosition collision on iOS WebKit)
     startWatcher(true);
   }, [processGpsPosition]);
 
@@ -363,20 +356,17 @@ export default function DriverCapturePWA() {
     }
   };
 
-  // Start Driving Route (Triggers GPS & Camera simultaneously within iOS user gesture)
+  // Start Driving Route (Sequential Camera -> GPS to avoid iOS Safari dual-dialog rejection)
   const startRoute = async () => {
     setGpsError(null);
     isActiveRef.current = true;
     setIsActive(true);
-    setLastCaptureNote('Iniciando cámara y GPS...');
+    setLastCaptureNote('Abriendo cámara trasera...');
 
-    // 1. Trigger GPS tracking synchronously inside user tap gesture (critical for iPhone Safari!)
-    startGpsTracking();
-
-    // 2. Wake up backend
+    // 1. Wake up backend
     pingBackendHealth().then((st) => setBackendReady(st.online));
 
-    // 3. Request Rear Camera in wide 16:9 HD
+    // 2. Request Rear Camera FIRST so iOS shows only 1 permission dialog at a time
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -395,14 +385,19 @@ export default function DriverCapturePWA() {
       }
 
       await requestWakeLock();
-      setLastCaptureNote('Ruta activa: capturando pavimento automáticamente');
+      setLastCaptureNote('Cámara lista. Activando GPS de alta precisión...');
 
-      // Take first snapshot 1.2s after camera stream stabilizes
+      // 3. Start GPS tracking 500ms after camera dialog closes so iOS Safari does not auto-reject it
+      setTimeout(() => {
+        startGpsTracking();
+      }, 500);
+
+      // 4. Take first snapshot 2.0s after camera stream stabilizes
       setTimeout(() => {
         if (isActiveRef.current) {
-          captureAndQueueFrame('📸 Primera captura de ruta registrada');
+          captureAndQueueFrame('📸 Primera captura de ruta enviada a YOLO11');
         }
-      }, 1200);
+      }, 2000);
     } catch (err: any) {
       console.error('Failed to start camera:', err);
       isActiveRef.current = false;
@@ -480,11 +475,32 @@ export default function DriverCapturePWA() {
 
         {/* GPS Permission / Diagnostic Alert Banner */}
         {gpsError && (
-          <div className="absolute top-14 left-3 right-3 z-30 bg-rose-950/95 border border-rose-500 text-rose-100 p-3 rounded-xl text-xs shadow-xl flex items-start gap-2.5">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-bold">Aviso de GPS en iPhone:</p>
-              <p className="mt-0.5 text-rose-200 leading-relaxed">{gpsError}</p>
+          <div className="absolute top-14 left-3 right-3 z-30 bg-rose-950/95 border border-rose-500 text-rose-100 p-3 rounded-xl text-xs shadow-xl flex flex-col gap-2">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-bold">Cómo activar la ubicación en tu iPhone (2 pasos):</p>
+                <p className="mt-1 text-rose-200 leading-relaxed">{gpsError}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setGpsError(null);
+                  startGpsTracking();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow"
+              >
+                🔄 Reintentar GPS Ahora
+              </button>
+              <button
+                type="button"
+                onClick={() => setGpsError(null)}
+                className="px-2.5 py-1.5 rounded-lg bg-rose-900/80 text-rose-200 font-semibold text-xs"
+              >
+                Ocultar
+              </button>
             </div>
           </div>
         )}

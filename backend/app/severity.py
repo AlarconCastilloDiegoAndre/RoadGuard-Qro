@@ -7,11 +7,12 @@ from typing import Dict, Literal, Tuple
 
 SeverityLevel = Literal["low", "medium", "high", "critical"]
 
+# Calibrated intrinsic hazard weights by damage class
 CLASS_WEIGHTS: Dict[str, float] = {
-    "D00": 0.40,  # Longitudinal crack
-    "D10": 0.50,  # Transverse crack
-    "D20": 0.80,  # Alligator / fatigue cracking
-    "D40": 1.00,  # Pothole
+    "D00": 0.30,  # Longitudinal crack
+    "D10": 0.42,  # Transverse crack
+    "D20": 0.68,  # Alligator / fatigue cracking
+    "D40": 0.85,  # Pothole
 }
 
 CLASS_NAME_MAP: Dict[int, str] = {
@@ -32,18 +33,25 @@ def compute_severity(
     bbox_width: float,
     bbox_height: float,
     y_center: float = 0.5,
-    w_class: float = 0.65,
-    w_area: float = 0.35,
+    w_class: float = 0.50,
+    w_area: float = 0.50,
 ) -> Tuple[float, SeverityLevel]:
+    """
+    Calculates calibrated numerical severity score and categorical rating.
+    Balances intrinsic class hazard (50%) and perspective-corrected physical area (50%)
+    so small defects score Low/Medium and large structural defects score High/Critical.
+    """
     if isinstance(class_name_or_id, int):
         class_code = CLASS_NAME_MAP.get(class_name_or_id, "D00")
     else:
         class_code = str(class_name_or_id).upper()
 
-    base_class_weight = CLASS_WEIGHTS.get(class_code, 0.40)
+    base_class_weight = CLASS_WEIGHTS.get(class_code, 0.30)
     norm_area = max(0.0, min(1.0, float(bbox_width) * float(bbox_height)))
     persp = perspective_factor(y_center)
-    area_contrib = min(1.0, norm_area * persp * 5.0)
+
+    # Area contribution saturates at 1.0 when perspective-adjusted area reaches ~25% of ROI
+    area_contrib = min(1.0, norm_area * persp * 4.0)
 
     score = (w_class * base_class_weight) + (w_area * area_contrib)
     score = round(max(0.0, min(1.0, score)), 4)

@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Filter, Download, RefreshCw, Camera, Radio
+  Filter, Download, RefreshCw, Camera, Radio, Trash2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { fetchRoadDamagesFromAPI, updateRoadDamageStatusAPI, RoadDamageDTO } from '@/lib/api';
+import { fetchRoadDamagesFromAPI, updateRoadDamageStatusAPI, deleteRoadDamageAPI, RoadDamageDTO } from '@/lib/api';
 
 type RoadDamage = RoadDamageDTO;
 
@@ -102,11 +102,16 @@ export default function MunicipalDashboard() {
     try {
       const apiDamages = await fetchRoadDamagesFromAPI();
       if (apiDamages && apiDamages.length > 0) {
-        setDamages(apiDamages);
+        // Filter out indoor fallback test coordinate (20.5888, -100.3899)
+        const cleaned = apiDamages.filter(
+          (item) => !(Math.abs(item.lat - 20.5888) < 0.0001 && Math.abs(item.lon - (-100.3899)) < 0.0001)
+        );
+        const list = cleaned.length > 0 ? cleaned : INITIAL_DEMO_DAMAGES;
+        setDamages(list);
         setSelectedDamage((prev) => {
-          if (!prev) return apiDamages[0];
-          const updated = apiDamages.find((item) => item.id === prev.id);
-          return updated || apiDamages[0];
+          if (!prev) return list[0];
+          const updated = list.find((item) => item.id === prev.id);
+          return updated || list[0];
         });
         setLastSyncTime(new Date().toLocaleTimeString());
         return;
@@ -248,6 +253,21 @@ export default function MunicipalDashboard() {
     await updateRoadDamageStatusAPI(damageId, newStatus);
     try {
       await supabase.from('road_damages').update({ status: newStatus }).eq('id', damageId);
+    } catch {
+      // Handled by backend API
+    }
+  };
+
+  // Delete false positive / test capture
+  const deleteDamage = async (damageId: string) => {
+    setDamages((prev) => {
+      const remaining = prev.filter((d) => d.id !== damageId);
+      setSelectedDamage(remaining[0] || null);
+      return remaining;
+    });
+    await deleteRoadDamageAPI(damageId);
+    try {
+      await supabase.from('road_damages').delete().eq('id', damageId);
     } catch {
       // Handled by backend API
     }
@@ -465,6 +485,13 @@ export default function MunicipalDashboard() {
                   className="px-2 py-1 text-[11px] font-semibold bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded hover:bg-rose-600/30"
                 >
                   Descartar
+                </button>
+                <button
+                  onClick={() => deleteDamage(selectedDamage.id)}
+                  className="px-2 py-1 text-[11px] font-semibold bg-rose-950 text-rose-300 border border-rose-700/60 rounded hover:bg-rose-900 flex items-center gap-1 ml-auto"
+                  title="Eliminar registro permanentemente"
+                >
+                  <Trash2 className="w-3 h-3" /> Eliminar
                 </button>
               </div>
             </div>

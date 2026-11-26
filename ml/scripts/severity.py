@@ -21,10 +21,10 @@ SeverityLevel = Literal["low", "medium", "high", "critical"]
 
 # Intrinsic hazard weight by damage class
 CLASS_WEIGHTS: Dict[str, float] = {
-    "D00": 0.40,  # Longitudinal crack
-    "D10": 0.50,  # Transverse crack
-    "D20": 0.80,  # Alligator / fatigue cracking (structural road base failure)
-    "D40": 1.00,  # Pothole (immediate vehicle safety hazard)
+    "D00": 0.30,  # Longitudinal crack
+    "D10": 0.42,  # Transverse crack
+    "D20": 0.68,  # Alligator / fatigue cracking (structural road base failure)
+    "D40": 0.85,  # Pothole (immediate vehicle safety hazard)
 }
 
 CLASS_NAME_MAP: Dict[int, str] = {
@@ -60,8 +60,8 @@ def compute_severity(
     bbox_width: float,
     bbox_height: float,
     y_center: float = 0.5,
-    w_class: float = 0.65,
-    w_area: float = 0.35,
+    w_class: float = 0.50,
+    w_area: float = 0.50,
 ) -> Tuple[float, SeverityLevel]:
     """
     Calculates numerical severity score and categorical rating.
@@ -89,8 +89,8 @@ def compute_severity(
 
     # Apply perspective correction (scaled and clamped)
     persp = perspective_factor(y_center)
-    # Area contribution: normalized so a 20% frame coverage at distance saturates to 1.0
-    area_contrib = min(1.0, norm_area * persp * 5.0)
+    # Area contribution: normalized so a 25% frame coverage at distance saturates to 1.0
+    area_contrib = min(1.0, norm_area * persp * 4.0)
 
     # Combined composite score
     score = (w_class * base_class_weight) + (w_area * area_contrib)
