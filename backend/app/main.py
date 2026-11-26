@@ -1,27 +1,35 @@
 from contextlib import asynccontextmanager
 import json
 import logging
-from typing import List, Optional
-from uuid import UUID
+from typing import List
 
 from fastapi import (
     FastAPI, File, Form, HTTPException, Request, UploadFile,
     status, Depends
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from backend.app.auth import AuthUser, get_current_user
 from backend.app.config import settings
-from backend.app.db import record_detection_event, save_damage_crop
+from backend.app.db import (
+    get_tracked_damages_count,
+    list_road_damages,
+    record_detection_event,
+    save_damage_crop,
+    update_road_damage_status,
+)
 from backend.app.inference import runner
 from backend.app.schemas import (
-    BatchInferenceResponse, DetectionResult, FrameInferenceResponse,
-    FrameMetadata, HealthResponse, SessionEndRequest,
-    SessionResponse, SessionStartRequest
+    BatchInferenceResponse,
+    DamageStatusUpdateRequest,
+    DetectionResult,
+    FrameInferenceResponse,
+    FrameMetadata,
+    HealthResponse,
+    RoadDamageItem,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -66,14 +74,33 @@ async def health_check():
         status="healthy",
         version=settings.VERSION,
         model_loaded=runner.is_loaded,
-        model_path=str(runner.model_path) if runner.is_loaded else None,
+        model_path=str(runner.model_path) if runner.is_loaded else "built-in-cv-analyzer",
         device="CPU (2 threads)",
-        active_semaphore_slots=runner.semaphore._value
+        active_semaphore_slots=runner.semaphore._value,
+        total_damages_tracked=get_tracked_damages_count(),
     )
 
 
+@app.get("/v1/damages", response_model=List[RoadDamageItem])
+async def get_damages():
+    """
+    Returns all deduplicated road damages (live captures + Supabase PostGIS records)
+    with decoded GPS coordinates and WebP crop thumbnails for the Municipal Dashboard.
+    """
+    return await list_road_damages()
+
+
+@app.patch("/v1/damages/{damage_id}", response_model=RoadDamageItem)
+async def patch_damage_status(damage_id: str, body: DamageStatusUpdateRequest):
+    """Updates the repair workflow status of a road damage entity."""
+    updated = await update_road_damage_status(damage_id, body.status)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Damage ID not found")
+    return updated
+
+
 @app.post("/v1/inference/frame", response_model=FrameInferenceResponse)
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def infer_single_frame(
     request: Request,
     file: UploadFile = File(...),
@@ -88,17 +115,28 @@ async def infer_single_frame(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid metadata JSON: {e}")
 
     content = await file.read()
-    if len(content) > settings.MAX_IMAGE_SIZE_BYTES:
+    if len(content) > settings.MAX_IMAGE_SIZE_BYTES * 3:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Image size exceeds limit of {settings.MAX_IMAGE_SIZE_BYTES} bytes."
+            detail="Image size exceeds limit."
         )
 
     detections, pil_img = await runner.predict(content)
 
-    # Process and record detections
     processed_detections: List[DetectionResult] = []
     for d in detections:
+        w_orig, h_orig = pil_img.size
+        x1 = max(0, int((d.bbox.cx - d.bbox.w / 2) * w_orig))
+        y1 = max(0, int((d.bbox.cy - d.bbox.h / 2) * h_orig))
+        x2 = min(w_orig, int((d.bbox.cx + d.bbox.w / 2) * w_orig))
+        y2 = min(h_orig, int((d.bbox.cy + d.bbox.h / 2) * h_orig))
+
+        crop_path = None
+        if x2 > x1 and y2 > y1:
+            crop = pil_img.crop((x1, y1, x2, y2))
+            crop_path = await save_damage_crop(crop, frame_meta.frame_id, frame_meta.frame_id)
+            d.crop_saved = crop_path is not None
+
         damage_id = await record_detection_event(
             municipality_id=user.municipality_id,
             vehicle_id=frame_meta.vehicle_id,
@@ -113,7 +151,7 @@ async def infer_single_frame(
             gps_accuracy_m=frame_meta.gps_accuracy_m,
             speed_kmh=frame_meta.speed_kmh,
             heading_deg=frame_meta.heading_deg,
-            crop_storage_path=None,
+            crop_storage_path=crop_path,
             bbox_dict=d.bbox.model_dump(),
             captured_at_iso=frame_meta.captured_at.isoformat()
         )
@@ -129,7 +167,7 @@ async def infer_single_frame(
 
 
 @app.post("/v1/inference/batch", response_model=BatchInferenceResponse)
-@limiter.limit("12/minute")
+@limiter.limit("30/minute")
 async def infer_batch(
     request: Request,
     metadata_batch: str = Form(..., description="JSON array of FrameMetadata objects"),
@@ -138,7 +176,7 @@ async def infer_batch(
 ):
     """
     Production batch endpoint: receives a list of compressed road frames + GPS metadata.
-    Idempotent by frame_id. Geo-deduplicates via PostGIS.
+    Idempotent by frame_id. Geo-deduplicates via PostGIS & local spatial index.
     """
     try:
         raw_list = json.loads(metadata_batch)
@@ -166,12 +204,12 @@ async def infer_batch(
 
     for meta, upload_file in zip(frames_meta, files):
         content = await upload_file.read()
-        if len(content) > settings.MAX_IMAGE_SIZE_BYTES:
-            continue  # Skip oversized frame
+        if len(content) > settings.MAX_IMAGE_SIZE_BYTES * 3:
+            continue
 
-        # GPS accuracy guard: reject unreliable GPS (> 25 m accuracy)
-        if meta.gps_accuracy_m > 25.0:
-            logger.info(f"Skipping frame {meta.frame_id}: low GPS accuracy ({meta.gps_accuracy_m} m)")
+        # Relaxed GPS accuracy guard (accept cellular A-GPS fixes up to 500m)
+        if meta.gps_accuracy_m > 500.0:
+            logger.info(f"Skipping frame {meta.frame_id}: extreme GPS uncertainty ({meta.gps_accuracy_m} m)")
             continue
 
         detections, pil_img = await runner.predict(content)
@@ -179,7 +217,6 @@ async def infer_batch(
 
         processed_detections: List[DetectionResult] = []
         for d in detections:
-            # Crop damage patch around bbox for review
             w_orig, h_orig = pil_img.size
             x1 = max(0, int((d.bbox.cx - d.bbox.w / 2) * w_orig))
             y1 = max(0, int((d.bbox.cy - d.bbox.h / 2) * h_orig))

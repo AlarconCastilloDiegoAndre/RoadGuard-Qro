@@ -1,31 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  MapPin, Filter, Download, AlertTriangle, CheckCircle2,
-  Clock, ShieldAlert, Layers, RefreshCw, ChevronRight, Eye
+  Filter, Download, RefreshCw, Camera, Radio
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { fetchRoadDamagesFromAPI, updateRoadDamageStatusAPI, RoadDamageDTO } from '@/lib/api';
 
-interface RoadDamage {
-  id: string;
-  damage_class: 'D00' | 'D10' | 'D20' | 'D40';
-  severity_score: number;
-  severity_level: 'low' | 'medium' | 'high' | 'critical';
-  detection_count: number;
-  distinct_vehicles_count: number;
-  status: 'reported' | 'confirmed' | 'validated' | 'in_repair' | 'repaired' | 'dismissed';
-  last_detected_at: string;
-  thumbnail_url?: string;
-  lat: number;
-  lon: number;
-}
+type RoadDamage = RoadDamageDTO;
 
 // Fallback seed data for Santiago de Querétaro
 const INITIAL_DEMO_DAMAGES: RoadDamage[] = [
   {
-    id: 'd1',
+    id: 'd0000000-0000-0000-0000-000000000001',
     damage_class: 'D40',
     severity_score: 0.885,
     severity_level: 'critical',
@@ -35,9 +23,10 @@ const INITIAL_DEMO_DAMAGES: RoadDamage[] = [
     last_detected_at: new Date(Date.now() - 3600000 * 2).toISOString(),
     lat: 20.5861,
     lon: -100.4082,
+    is_live: false,
   },
   {
-    id: 'd2',
+    id: 'd0000000-0000-0000-0000-000000000002',
     damage_class: 'D20',
     severity_score: 0.72,
     severity_level: 'high',
@@ -47,9 +36,10 @@ const INITIAL_DEMO_DAMAGES: RoadDamage[] = [
     last_detected_at: new Date(Date.now() - 3600000 * 8).toISOString(),
     lat: 20.5982,
     lon: -100.3755,
+    is_live: false,
   },
   {
-    id: 'd3',
+    id: 'd0000000-0000-0000-0000-000000000004',
     damage_class: 'D40',
     severity_score: 0.795,
     severity_level: 'critical',
@@ -59,9 +49,10 @@ const INITIAL_DEMO_DAMAGES: RoadDamage[] = [
     last_detected_at: new Date(Date.now() - 3600000 * 24).toISOString(),
     lat: 20.692,
     lon: -100.448,
+    is_live: false,
   },
   {
-    id: 'd4',
+    id: 'd0000000-0000-0000-0000-000000000003',
     damage_class: 'D10',
     severity_score: 0.44,
     severity_level: 'medium',
@@ -71,6 +62,7 @@ const INITIAL_DEMO_DAMAGES: RoadDamage[] = [
     last_detected_at: new Date(Date.now() - 3600000 * 48).toISOString(),
     lat: 20.5835,
     lon: -100.395,
+    is_live: false,
   },
 ];
 
@@ -88,7 +80,6 @@ const SEVERITY_COLORS = {
   low: '#3b82f6',
 };
 
-// High-speed CDN CartoDB Dark Matter GL style (free, edge-cached in Mexico, never blocked)
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 export default function MunicipalDashboard() {
@@ -98,35 +89,43 @@ export default function MunicipalDashboard() {
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [mapReady, setMapReady] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
-  // Fetch damages from Supabase
-  const fetchDamages = async () => {
+  // Fetch live damages from FastAPI backend (which merges Supabase PostGIS + live route captures)
+  const fetchDamages = useCallback(async (showSpinner: boolean = false) => {
+    if (showSpinner) setIsRefreshing(true);
     try {
-      const { data, error } = await supabase
-        .from('road_damages')
-        .select('*')
-        .order('severity_score', { ascending: false });
-
-      if (data && data.length > 0 && !error) {
-        const parsed: RoadDamage[] = data.map((d: any) => ({
-          ...d,
-          lat: typeof d.lat === 'number' ? d.lat : 20.5861,
-          lon: typeof d.lon === 'number' ? d.lon : -100.4082,
-        }));
-        setDamages(parsed);
+      const apiDamages = await fetchRoadDamagesFromAPI();
+      if (apiDamages && apiDamages.length > 0) {
+        setDamages(apiDamages);
+        setSelectedDamage((prev) => {
+          if (!prev) return apiDamages[0];
+          const updated = apiDamages.find((item) => item.id === prev.id);
+          return updated || apiDamages[0];
+        });
+        setLastSyncTime(new Date().toLocaleTimeString());
+        return;
       }
     } catch {
-      // Retain initial demo damages
+      // Fallback
+    } finally {
+      if (showSpinner) setIsRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchDamages();
-  }, []);
+    fetchDamages(true);
+    // Poll every 8 seconds for live motorcycle detections
+    const interval = setInterval(() => {
+      fetchDamages(false);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [fetchDamages]);
 
   // Initialize MapLibre GL
   useEffect(() => {
@@ -140,7 +139,7 @@ export default function MunicipalDashboard() {
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
         style: MAP_STYLE,
-        center: [-100.392, 20.595], // Santiago de Querétaro Downtown
+        center: [-100.392, 20.595],
         zoom: 12.5,
       });
 
@@ -152,7 +151,6 @@ export default function MunicipalDashboard() {
         map.resize();
       });
 
-      // Handle window resize dynamically
       const handleResize = () => map.resize();
       window.addEventListener('resize', handleResize);
 
@@ -181,7 +179,6 @@ export default function MunicipalDashboard() {
     if (!mapReady || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    // Clear previous markers
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
@@ -189,18 +186,19 @@ export default function MunicipalDashboard() {
       filteredDamages.forEach((d) => {
         const el = document.createElement('div');
         el.className = 'damage-marker-pin';
-        el.style.width = '20px';
-        el.style.height = '20px';
+        const size = d.is_live ? '24px' : '20px';
+        el.style.width = size;
+        el.style.height = size;
         el.style.borderRadius = '50%';
         el.style.backgroundColor = SEVERITY_COLORS[d.severity_level];
-        el.style.border = '2.5px solid #ffffff';
-        el.style.boxShadow = `0 0 12px ${SEVERITY_COLORS[d.severity_level]}, 0 2px 5px rgba(0,0,0,0.6)`;
+        el.style.border = d.is_live ? '3px solid #38bdf8' : '2.5px solid #ffffff';
+        el.style.boxShadow = `0 0 14px ${SEVERITY_COLORS[d.severity_level]}, 0 2px 5px rgba(0,0,0,0.6)`;
         el.style.cursor = 'pointer';
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           setSelectedDamage(d);
-          map.flyTo({ center: [d.lon, d.lat], zoom: 15.5 });
+          map.flyTo({ center: [d.lon, d.lat], zoom: 16 });
         });
 
         const marker = new maplibregl.Marker({ element: el })
@@ -214,9 +212,10 @@ export default function MunicipalDashboard() {
 
   // Export CSV for Public Works asphalt budget
   const exportCSV = () => {
-    const headers = ['ID', 'Clase', 'Severidad_Score', 'Nivel', 'Veces_Detectado', 'Unidades', 'Estado', 'Latitud', 'Longitud'];
+    const headers = ['ID', 'Origen', 'Clase', 'Severidad_Score', 'Nivel', 'Veces_Detectado', 'Unidades', 'Estado', 'Latitud', 'Longitud', 'Ultima_Deteccion'];
     const rows = filteredDamages.map((d) => [
       d.id,
+      d.is_live ? 'RUTA_EN_VIVO' : 'SEED_DEMO',
       d.damage_class,
       d.severity_score,
       d.severity_level,
@@ -225,6 +224,7 @@ export default function MunicipalDashboard() {
       d.status,
       d.lat,
       d.lon,
+      d.last_detected_at,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].map((e) => e.join(',')).join('\n');
@@ -237,7 +237,7 @@ export default function MunicipalDashboard() {
     document.body.removeChild(link);
   };
 
-  // Update Status in Supabase & Local State
+  // Update Status in Backend API, Supabase & Local State
   const updateStatus = async (damageId: string, newStatus: RoadDamage['status']) => {
     setDamages((prev) =>
       prev.map((d) => (d.id === damageId ? { ...d, status: newStatus } : d))
@@ -245,12 +245,15 @@ export default function MunicipalDashboard() {
     if (selectedDamage && selectedDamage.id === damageId) {
       setSelectedDamage((prev) => (prev ? { ...prev, status: newStatus } : null));
     }
+    await updateRoadDamageStatusAPI(damageId, newStatus);
     try {
       await supabase.from('road_damages').update({ status: newStatus }).eq('id', damageId);
     } catch {
-      // Offline fallback
+      // Handled by backend API
     }
   };
+
+  const liveCount = damages.filter((d) => d.is_live).length;
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -261,16 +264,25 @@ export default function MunicipalDashboard() {
             <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
             RoadGuard <span className="text-sky-400 font-extrabold text-xs bg-sky-950 px-1.5 py-0.5 rounded border border-sky-800">DASHBOARD</span>
           </Link>
-          <span className="text-slate-600">|</span>
-          <span className="text-xs text-slate-400">Secretaría de Obras Públicas • Municipio de Querétaro</span>
+          <span className="text-slate-600 hidden sm:inline">|</span>
+          <span className="text-xs text-slate-400 hidden sm:inline">
+            Secretaría de Obras Públicas • {liveCount > 0 ? `${liveCount} captura(s) en vivo` : 'Monitoreo activo'}
+          </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => fetchDamages(true)}
+            className="px-3 py-1.5 text-xs font-semibold text-sky-300 bg-sky-950/60 hover:bg-sky-900/60 border border-sky-800/80 rounded-lg flex items-center gap-1.5 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Actualizar {lastSyncTime ? `(${lastSyncTime})` : ''}
+          </button>
           <button
             onClick={exportCSV}
             className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg flex items-center gap-1.5 transition"
           >
-            <Download className="w-3.5 h-3.5" /> Exportar CSV Presupuesto
+            <Download className="w-3.5 h-3.5" /> Exportar CSV
           </button>
           <Link
             href="/capture"
@@ -351,7 +363,7 @@ export default function MunicipalDashboard() {
                 onClick={() => {
                   setSelectedDamage(item);
                   if (mapInstanceRef.current) {
-                    mapInstanceRef.current.flyTo({ center: [item.lon, item.lat], zoom: 15.5 });
+                    mapInstanceRef.current.flyTo({ center: [item.lon, item.lat], zoom: 16 });
                   }
                 }}
                 className={`p-3 cursor-pointer transition flex items-center justify-between ${
@@ -365,11 +377,20 @@ export default function MunicipalDashboard() {
                       style={{ backgroundColor: SEVERITY_COLORS[item.severity_level] }}
                     />
                     <span className="font-bold text-xs text-white">{CLASS_LABELS[item.damage_class]}</span>
+                    {item.is_live && (
+                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                        <Radio className="w-2.5 h-2.5 animate-pulse" /> EN VIVO
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
                     <span>Score: {(item.severity_score * 100).toFixed(0)}%</span>
                     <span>•</span>
-                    <span>{item.detection_count} detecciones ({item.distinct_vehicles_count} unidades)</span>
+                    <span>{item.detection_count} det.</span>
+                    <span>•</span>
+                    <span className="font-mono text-[10px]">
+                      {item.lat.toFixed(4)}, {item.lon.toFixed(4)}
+                    </span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -397,10 +418,26 @@ export default function MunicipalDashboard() {
                 </span>
               </div>
 
+              {/* Cropped Road Damage Thumbnail Photo */}
+              {selectedDamage.thumbnail_url && (
+                <div className="relative rounded-xl overflow-hidden border border-slate-800 bg-black h-28 flex items-center justify-center">
+                  <img
+                    src={selectedDamage.thumbnail_url}
+                    alt="Recorte del pavimento"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-1.5 left-2 bg-slate-950/85 text-[10px] text-sky-300 px-2 py-0.5 rounded flex items-center gap-1 border border-slate-800">
+                    <Camera className="w-3 h-3" /> Evidencia capturada en ruta
+                  </span>
+                </div>
+              )}
+
               <div className="text-xs text-slate-400 space-y-1">
                 <p>📍 Coord: {selectedDamage.lat.toFixed(5)}, {selectedDamage.lon.toFixed(5)}</p>
-                <p>🚛 Confirmado por: {selectedDamage.distinct_vehicles_count} patrullas/camiones</p>
-                <p>🕒 Última detección: {new Date(selectedDamage.last_detected_at).toLocaleTimeString()}</p>
+                <p>
+                  🚛 Confirmaciones: {selectedDamage.detection_count} detección(es) ({selectedDamage.distinct_vehicles_count} unidad)
+                </p>
+                <p>🕒 Última detección: {new Date(selectedDamage.last_detected_at).toLocaleString()}</p>
               </div>
 
               {/* Status Action Buttons for Engineers */}
@@ -454,7 +491,7 @@ export default function MunicipalDashboard() {
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-slate-300">Crítica (&gt; 75%) — Asfalto roto</span>
+                <span className="text-slate-300">Crítica (&gt; 75%) — Asfalto roto / Bache</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-orange-500" />
@@ -467,6 +504,10 @@ export default function MunicipalDashboard() {
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-blue-500" />
                 <span className="text-slate-300">Baja (&lt; 35%) — Grieta longitudinal</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                <span className="w-3 h-3 rounded-full bg-red-500 border-2 border-sky-400" />
+                <span className="text-sky-300 font-semibold">Borde Azul = Captura en Vivo</span>
               </div>
             </div>
           </div>

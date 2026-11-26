@@ -25,18 +25,19 @@ export function calculateDistanceMeters(
 }
 
 /**
- * Validates GPS position against strict quality thresholds.
- * Avoids captures when stationary or when GPS uncertainty exceeds 25 meters.
+ * Validates GPS position against quality thresholds.
+ * Relaxed accuracy threshold (up to 250 m) so cellular A-GPS on iPhone works immediately.
  */
 export function isGPSReliable(
   accuracy: number,
-  speedKmh?: number | null
+  speedKmh?: number | null,
+  requireMinSpeed: boolean = false
 ): { valid: boolean; reason?: string } {
-  if (accuracy > 25.0) {
-    return { valid: false, reason: `GPS uncertainty too high (${Math.round(accuracy)} m > 25 m)` };
+  if (accuracy > 250.0) {
+    return { valid: false, reason: `Señal GPS débil (±${Math.round(accuracy)} m)` };
   }
-  if (speedKmh !== undefined && speedKmh !== null && speedKmh < 8.0) {
-    return { valid: false, reason: `Vehicle stationary/crawling (${speedKmh.toFixed(1)} km/h < 8 km/h)` };
+  if (requireMinSpeed && speedKmh !== undefined && speedKmh !== null && speedKmh < 5.0) {
+    return { valid: false, reason: `Vehículo detenido (${speedKmh.toFixed(1)} km/h < 5 km/h)` };
   }
   return { valid: true };
 }

@@ -53,6 +53,28 @@ class BatchInferenceResponse(BaseModel):
     results: List[FrameInferenceResponse]
 
 
+class RoadDamageItem(BaseModel):
+    id: str
+    damage_class: DamageClass
+    severity_score: float
+    severity_level: SeverityLevel
+    detection_count: int
+    distinct_vehicles_count: int
+    status: DamageStatus
+    first_detected_at: str
+    last_detected_at: str
+    thumbnail_url: Optional[str] = None
+    lat: float
+    lon: float
+    gps_accuracy_m: Optional[float] = None
+    speed_kmh: Optional[float] = None
+    is_live: bool = True
+
+
+class DamageStatusUpdateRequest(BaseModel):
+    status: DamageStatus
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
@@ -60,6 +82,7 @@ class HealthResponse(BaseModel):
     model_path: Optional[str]
     device: str
     active_semaphore_slots: int
+    total_damages_tracked: int = 0
 
 
 class SessionStartRequest(BaseModel):
