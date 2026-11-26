@@ -88,10 +88,14 @@ const SEVERITY_COLORS: Record<RoadDamage['severity_level'], string> = {
 
 type TileStyleKey = 'dark' | 'streets' | 'satellite';
 
-const TILE_PROVIDERS: Record<TileStyleKey, { label: string; getUrl: (z: number, x: number, y: number) => string }> = {
+const TILE_PROVIDERS: Record<
+  TileStyleKey,
+  { label: string; getUrl: (z: number, x: number, y: number) => string; filterClass?: string }
+> = {
   dark: {
     label: 'Oscuro',
-    getUrl: (z, x, y) => `https://a.basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png`,
+    getUrl: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+    filterClass: 'invert hue-rotate-180 brightness-95 contrast-90 saturate-75',
   },
   streets: {
     label: 'Calles OSM',
@@ -653,7 +657,9 @@ export default function MunicipalDashboard() {
           style={{ touchAction: 'none' }}
         >
           {/* Raster Map Tiles Layer */}
-          <div className="absolute inset-0 pointer-events-none">
+          <div
+            className={`absolute inset-0 pointer-events-none ${TILE_PROVIDERS[tileStyle].filterClass || ''}`}
+          >
             {tiles.map((t) => (
               <img
                 key={t.key}
