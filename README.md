@@ -56,12 +56,23 @@ roadguard-qro/
 └── docs/                # Architecture, CNN justification, datasets, privacy, deployment
 ```
 
+## Live Links (Production)
+
+- **Web Dashboard:** [https://road-guard-qro.vercel.app/dashboard](https://road-guard-qro.vercel.app/dashboard)
+- **Driver Capture PWA:** [https://road-guard-qro.vercel.app/capture](https://road-guard-qro.vercel.app/capture)
+- **Virtual Route Simulator:** [https://road-guard-qro.vercel.app/simulator](https://road-guard-qro.vercel.app/simulator)
+- **FastAPI Backend & Health Check:** [https://roadguard-qro.onrender.com/health](https://roadguard-qro.onrender.com/health)
+- **Interactive OpenAPI Docs:** [https://roadguard-qro.onrender.com/docs](https://roadguard-qro.onrender.com/docs)
+
 ## Documentation
 
+- 📘 **[Documentación Técnica Integral del Proyecto](docs/DOCUMENTACION_PROYECTO.md)** *(Especificación técnica completa, arquitectura, ML, PostGIS y marcos normativos)*
+- 📗 **[Manual de Usuario Operativo](docs/MANUAL_USUARIO.md)** *(Guía paso a paso para choferes en ruta, ingenieros en dashboard y resolución de problemas)*
 - [Architecture & decision log](docs/ARCHITECTURE.md)
 - [Why a CNN? (academic justification)](docs/CNN_JUSTIFICATION.md)
+- [Zero-cost deployment guide](docs/DEPLOYMENT_GUIDE.md)
 - [Datasets & attribution](docs/DATASETS.md)
-- [Privacy](docs/PRIVACY.md)
+- [Privacy compliance](docs/PRIVACY.md)
 - [Implementation phases & control gates](docs/ROADMAP.md)
 
 ## Project status
