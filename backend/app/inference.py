@@ -204,8 +204,8 @@ class ONNXModelRunner:
             class_ids = np.argmax(class_scores, axis=1)
             confidences = np.max(class_scores, axis=1)
 
-            # Use stricter confidence threshold if background does not look like typical road asphalt
-            effective_conf_thresh = 0.28 if is_road else 0.58
+            # Use RDD2022 optimal F1 confidence (0.21) on road surfaces, strict (0.62) on non-road scenes
+            effective_conf_thresh = 0.21 if is_road else 0.62
 
             mask = confidences >= effective_conf_thresh
             boxes = boxes[mask]
